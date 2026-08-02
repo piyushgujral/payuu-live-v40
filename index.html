@@ -14,6 +14,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Poppins:wght@400;500;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+    <!-- External Engine Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
     <!-- Stylesheet -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -73,19 +79,30 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-storage-compat.js"></script>
 
-    <!-- Modular Script Imports -->
+    <!-- Strict Execution Order Module Imports -->
     <script src="firebase.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/theme.js"></script>
     <script src="js/particles.js"></script>
+    <script src="js/animation.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/queue.js"></script>
+    <script src="js/voice.js"></script>
+    <script src="js/overlay.js"></script>
+    <script src="js/notifications.js"></script>
+    <script src="js/analytics.js"></script>
+    <script src="js/export.js"></script>
+    <script src="js/settings.js"></script>
+    <script src="js/admin.js"></script>
     <script src="js/ui.js"></script>
 
-    <!-- Loading Screen Controller -->
+    <!-- Loading Screen Controller & Platform Initializer -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            window.initGoldenParticles();
-            window.initUIModule();
+            if (typeof window.initGoldenParticles === 'function') window.initGoldenParticles();
+            if (typeof window.initUIModule === 'function') window.initUIModule();
 
             const statusEl = document.getElementById('loading-status-text');
             const screenEl = document.getElementById('app-loading-screen');
