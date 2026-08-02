@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title id="page-title">Payuu Live | Creator Support Platform</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" id="favicon-link" href="assets/images/favicon.png">
+
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Poppins:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="darkblue">
+
+    <!-- STEPPED LOADING SCREEN -->
+    <div id="app-loading-screen">
+        <div class="welcome-logo-container">
+            <img src="assets/images/logo.png" alt="Payuu Live" class="nav-logo-img dynamic-logo">
+        </div>
+        <div class="loading-spinner-ring"></div>
+        <div class="loading-text-status" id="loading-status-text">Initializing Platform Core...</div>
+    </div>
+
+    <!-- MOUSE SPOTLIGHT GLOW -->
+    <div id="cursor-glow"></div>
+
+    <!-- BACKGROUND NEBULA CANVAS -->
+    <canvas id="particle-canvas"></canvas>
+
+    <!-- WELCOME OVERLAY SCREEN -->
+    <div id="welcome-screen" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-navy); z-index:999; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <img src="assets/images/logo.png" alt="Payuu Live" class="dynamic-logo" style="width:100px; height:100px; border-radius:50%; border:3px solid var(--gold-primary); margin-bottom:15px;">
+        <h1 style="font-family:var(--font-display); color:#fff; margin-bottom:5px;">PAYUU LIVE</h1>
+        <p style="color:var(--text-sub); margin-bottom:20px;">CREATOR SUPPORT PLATFORM</p>
+        <button id="btn-enter-dashboard" class="nav-social-btn" style="padding:10px 24px; font-size:1rem; cursor:pointer;">
+            ENTER PLATFORM <i class="fa-solid fa-arrow-right"></i>
+        </button>
+    </div>
+
+    <!-- STICKY GLASS NAVBAR -->
+    <header class="navbar-sticky">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <img src="assets/images/logo.png" alt="Payuu Live Logo" class="nav-logo-img dynamic-logo">
+                <span class="nav-brand-name" id="dyn-nav-brand">PAYUU <span>LIVE</span></span>
+            </div>
+
+            <nav class="nav-social-compact">
+                <a href="https://kick.com/payuu-25" id="nav-link-kick" target="_blank" class="nav-social-btn">
+                    <span>KICK</span>
+                    <span class="live-dot"></span>
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="container">
+        <section class="glass-panel" style="text-align:center;">
+            <h1 id="dyn-hero-title" style="font-family:var(--font-display); font-size:2rem; margin-bottom:8px;">PAYUU LIVE</h1>
+            <p id="dyn-hero-tagline" style="color:var(--text-sub); font-size:0.95rem;">Every contribution helps upgrade the stream setup!</p>
+        </section>
+    </main>
+
+    <!-- Firebase SDK Libraries -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+
+    <!-- Modular Script Imports -->
+    <script src="firebase.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/theme.js"></script>
+    <script src="js/particles.js"></script>
+    <script src="js/ui.js"></script>
+
+    <!-- Loading Screen Controller -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            window.initGoldenParticles();
+            window.initUIModule();
+
+            const statusEl = document.getElementById('loading-status-text');
+            const screenEl = document.getElementById('app-loading-screen');
+
+            setTimeout(() => { if (statusEl) statusEl.textContent = "Connecting Firebase..."; }, 300);
+            setTimeout(() => { if (statusEl) statusEl.textContent = "Ready!"; }, 600);
+            setTimeout(() => { if (screenEl) screenEl.classList.add('hidden'); }, 800);
+        });
+    </script>
+</body>
+</html>
