@@ -1,859 +1,1314 @@
 /* ====================================================
-   PAYUU LIVE DASHBOARD - MASTER JAVASCRIPT ENGINE
+   PAYUU LIVE DASHBOARD - MASTER STYLESHEET
+   Colors: Dark Navy (#07192F, #050E1A), Royal Blue (#0B2B4A), Gold (#FFD700)
+   Kick Signature Accent: Neon Green (#53FC18)
    ==================================================== */
 
-const STATUS = {
-    AWAITING_PAYMENT: "Awaiting Payment",
-    AWAITING_VERIFICATION: "Awaiting Verification",
-    APPROVED: "Approved",
-    REJECTED: "Rejected"
-};
-
-const DEFAULT_SETTINGS = {
-    websiteName: "Payuu Live",
-    streamerName: "Payuu Live",
-    tagline: "Every contribution helps upgrade the stream, improve the gaming setup, and create better content for the community. Thank you for being part of the journey! ❤️🎮",
-    logoUrl: "assets/images/logo.png",
-    faviconUrl: "assets/images/favicon.png",
-    
-    upiId: "payalgupta545757-1@okicici",
-    qrCodeUrl: "",
-    suggestedAmounts: [40, 50, 100, 250, 500, 1000],
-    minAmount: 40,
-    maxAmount: 50000,
-    
-    goalTarget: 10000,
-    goalTitle: "Monthly Goal",
-    currencySymbol: "₹",
-    thankYouMessage: "Your payment request has been submitted. Please wait while Payuu verifies your payment.",
-    fallbackMessage: "Supported the stream!",
-    
-    socials: {
-        kick: "https://kick.com/payuu-25",
-        instagram: "https://www.instagram.com/payuulive",
-        youtube: "https://www.youtube.com/@payuulive",
-        discord: "https://discord.gg/nSZCe9mS62",
-        facebook: "",
-        twitter: "",
-        website: ""
-    },
-    
-    overlay: {
-        duration: 12, // Default 12s
-        confetti: true,
-        sound: true,
-        volume: 0.8,
-        animation: "bounce"
-    },
-
-    voice: {
-        enabled: true,
-        language: "en-IN",
-        gender: "female",
-        style: "excited",
-        volumePct: 90,
-        pitch: 1.2,
-        rate: 1.0,
-        pauseMs: 500,
-        script: "🔥 New Support Received!\n\n{SupporterName} has supported the stream.\n\nAmount: {Currency}{Amount}.\n\n{Message}\n\nThank you for supporting {WebsiteName}."
-    },
-
-    emailNotifications: {
-        enabled: true,
-        serviceId: "",
-        templateId: "",
-        publicKey: "",
-        senderName: "Payuu Live Dashboard",
-        replyTo: "support@payuulive.com",
-        subject: "🔔 New Support Request - Payuu Live"
-    },
-    
-    homeTexts: {
-        welcomeTitle: "PAYUU LIVE",
-        welcomeSubtitle: "CREATOR SUPPORT DASHBOARD",
-        supportBtnText: "SUPPORT NOW",
-        footerText: "Made with ❤️ by Payuu Live"
-    }
-};
-
-// ====================================================
-// MODULE 4: PLUGGABLE VOICE MANAGER ENGINE
-// ====================================================
-class VoiceManager {
-    constructor() {
-        this.queue = [];
-        this.isSpeaking = false;
-        this.synth = window.speechSynthesis || null;
-
-        if (this.synth && this.synth.onvoiceschanged !== undefined) {
-            this.synth.onvoiceschanged = () => { this.getAvailableVoices(); };
-        }
-    }
-
-    getAvailableVoices() {
-        return this.synth ? this.synth.getVoices() : [];
-    }
-
-    constructSpeechLines(template, item, settings) {
-        const dateStr = item.dateSubmitted || (item.approvedAt ? new Date(item.approvedAt).toLocaleDateString() : new Date().toLocaleDateString());
-        const timeStr = item.timeSubmitted || (item.approvedAt ? new Date(item.approvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString());
-        const supporterMsg = item.msg ? item.msg.trim() : "";
-
-        let lines = template.split('\n');
-        let processedLines = [];
-
-        lines.forEach(line => {
-            if (line.includes('{Message}') && !supporterMsg) {
-                return;
-            }
-
-            let l = line
-                .replace(/\{SupporterName\}/g, item.name || "A Supporter")
-                .replace(/\{Amount\}/g, item.amount || 0)
-                .replace(/\{Message\}/g, supporterMsg)
-                .replace(/\{Currency\}/g, settings.currencySymbol || "₹")
-                .replace(/\{StreamerName\}/g, settings.streamerName || "Payuu Live")
-                .replace(/\{WebsiteName\}/g, settings.websiteName || "Payuu Live")
-                .replace(/\{Date\}/g, dateStr)
-                .replace(/\{Time\}/g, timeStr);
-
-            if (l.trim().length > 0) {
-                processedLines.push(l.trim());
-            }
-        });
-
-        return processedLines;
-    }
-
-    speak(item, settings, onComplete) {
-        const vCfg = settings.voice || {};
-        if (!this.synth || vCfg.enabled === false) {
-            if (onComplete) onComplete();
-            return;
-        }
-
-        const scriptTemplate = vCfg.script && vCfg.script.trim().length > 0 ? vCfg.script : DEFAULT_SETTINGS.voice.script;
-        const lines = this.constructSpeechLines(scriptTemplate, item, settings);
-
-        if (lines.length === 0) {
-            if (onComplete) onComplete();
-            return;
-        }
-
-        this.queue.push({ lines, vCfg, onComplete });
-        this.processQueue();
-    }
-
-    processQueue() {
-        if (this.isSpeaking || this.queue.length === 0) return;
-
-        this.isSpeaking = true;
-        const current = this.queue.shift();
-
-        this.synth.cancel();
-
-        const pauseMs = Number(current.vCfg.pauseMs) !== undefined ? Number(current.vCfg.pauseMs) : 500;
-        let lineIdx = 0;
-
-        const speakNextLine = () => {
-            if (lineIdx >= current.lines.length) {
-                this.isSpeaking = false;
-                if (current.onComplete) current.onComplete();
-                this.processQueue();
-                return;
-            }
-
-            const currentText = current.lines[lineIdx];
-            const utterance = new SpeechSynthesisUtterance(currentText);
-
-            const lang = current.vCfg.language === "mixed" ? "en-IN" : (current.vCfg.language || "en-IN");
-            utterance.lang = lang;
-            utterance.volume = (current.vCfg.volumePct !== undefined ? current.vCfg.volumePct : 90) / 100;
-            utterance.rate = Number(current.vCfg.rate) || 1.0;
-
-            if (current.vCfg.gender === "male") {
-                utterance.pitch = Number(current.vCfg.pitch) ? Number(current.vCfg.pitch) * 0.7 : 0.8;
-            } else {
-                utterance.pitch = Number(current.vCfg.pitch) || 1.2;
-            }
-
-            const voices = this.getAvailableVoices();
-            const matched = voices.find(v => v.lang === lang || v.lang.replace('_', '-').startsWith(lang.split('-')[0]));
-            if (matched) utterance.voice = matched;
-
-            utterance.onend = () => {
-                lineIdx++;
-                setTimeout(speakNextLine, pauseMs);
-            };
-
-            utterance.onerror = () => {
-                lineIdx++;
-                setTimeout(speakNextLine, pauseMs);
-            };
-
-            this.synth.speak(utterance);
-        };
-
-        speakNextLine();
-    }
-
-    stop() {
-        if (this.synth) {
-            this.synth.cancel();
-            this.isSpeaking = false;
-            this.queue = [];
-        }
-    }
+:root {
+    --bg-dark: #050E1A;
+    --bg-navy: #07192F;
+    --bg-royal: #0B2B4A;
+    --card-bg: rgba(7, 25, 47, 0.85);
+    --card-border: rgba(0, 180, 255, 0.25);
+    --gold-primary: #FFD700;
+    --gold-light: #FFF066;
+    --gold-glow: rgba(255, 215, 0, 0.5);
+    --gold-grad: linear-gradient(135deg, #FFE866 0%, #FFA800 100%);
+    --kick-green: #53FC18;
+    --kick-glow: rgba(83, 252, 24, 0.45);
+    --cyan-neon: #00F0FF;
+    --pink-neon: #FF007F;
+    --white: #FFFFFF;
+    --text-sub: #8E9DB0;
+    --glass-border: rgba(255, 215, 0, 0.28);
+    --radius-lg: 20px;
+    --radius-md: 12px;
+    --font-display: 'Orbitron', sans-serif;
+    --font-body: 'Poppins', sans-serif;
+    --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-const voiceManagerEngine = new VoiceManager();
-
-const STATE = {
-    goalTarget: 10000,
-    goalCurrent: 0,
-    selectedAmount: 50,
-    topSupporter: { name: "No Top Supporter", amount: 0, isPinned: false },
-    upiId: "payalgupta545757-1@okicici",
-    payeeName: "Payuu Live",
-    approvedSupporters: [],
-    pendingQueue: [],
-    adminList: [],
-    auditLogs: [],
-    notificationLogs: [],
-    activeSubmission: null,
-    settings: { ...DEFAULT_SETTINGS },
-    currentAdmin: null
-};
-
-let chartInstances = {};
-let qrCodeInstance = null;
-
-function updateVoiceScriptPreview() {
-    const scriptVal = document.getElementById('set-voice-script')?.value || DEFAULT_SETTINGS.voice.script;
-    const previewContainer = document.getElementById('voice-script-preview-text');
-    
-    if (previewContainer) {
-        const sampleItem = {
-            name: "Rahul",
-            amount: 500,
-            msg: "Love your stream!",
-            dateSubmitted: new Date().toLocaleDateString(),
-            timeSubmitted: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-
-        const lines = voiceManagerEngine.constructSpeechLines(scriptVal, sampleItem, STATE.settings);
-        previewContainer.textContent = lines.join('\n');
-    }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
 }
 
-function applySettingsToUI(s) {
-    if (!s) return;
-    STATE.settings = { ...DEFAULT_SETTINGS, ...s };
-    const cfg = STATE.settings;
-
-    document.getElementById('page-title').textContent = `${cfg.websiteName} | Official Creator Support Hub`;
-    document.getElementById('dyn-nav-brand').innerHTML = `${escapeHtml(cfg.websiteName)} <span>LIVE</span>`;
-    document.getElementById('dyn-welcome-title').textContent = cfg.homeTexts.welcomeTitle || cfg.websiteName;
-    document.getElementById('dyn-welcome-subtitle').textContent = cfg.homeTexts.welcomeSubtitle;
-    document.getElementById('dyn-hero-title').textContent = cfg.websiteName;
-    document.getElementById('dyn-hero-tagline').textContent = cfg.tagline;
-
-    if (cfg.logoUrl) {
-        document.querySelectorAll('.dynamic-logo').forEach(img => img.src = cfg.logoUrl);
-    }
-    if (cfg.faviconUrl) {
-        document.getElementById('favicon-link').href = cfg.faviconUrl;
-    }
-
-    STATE.upiId = cfg.upiId;
-    STATE.payeeName = cfg.streamerName;
-    STATE.goalTarget = Number(cfg.goalTarget || 10000);
-    document.getElementById('upi-id-text').textContent = cfg.upiId;
-    document.getElementById('dyn-goal-title').textContent = cfg.goalTitle;
-    document.getElementById('dyn-btn-text').textContent = cfg.homeTexts.supportBtnText;
-    document.getElementById('warn-min-amt').textContent = cfg.minAmount;
-
-    document.querySelectorAll('.curr-sym').forEach(el => el.textContent = cfg.currencySymbol || '₹');
-
-    if (cfg.emailNotifications && cfg.emailNotifications.publicKey && window.emailjs) {
-        try {
-            emailjs.init(cfg.emailNotifications.publicKey);
-        } catch (e) { console.error("EmailJS Init Error:", e); }
-    }
-
-    const tiersContainer = document.getElementById('tier-cards-container');
-    if (tiersContainer && Array.isArray(cfg.suggestedAmounts)) {
-        const tierLabels = ["Rookie 🎮", "Gamer ⭐", "Pro 🔥", "Elite 💎", "Champion 👑", "Legend 🏆"];
-        const tierBadges = ["🎮", "⭐", "🔥", "💎", "👑", "🏆"];
-        
-        tiersContainer.innerHTML = '';
-        cfg.suggestedAmounts.forEach((amt, idx) => {
-            const card = document.createElement('div');
-            card.className = `donation-card ${amt === STATE.selectedAmount ? 'active' : ''}`;
-            card.setAttribute('data-value', amt);
-            card.innerHTML = `
-                <div class="tier-badge-icon">${tierBadges[idx % tierBadges.length]}</div>
-                <div class="tier-amount-display"><span class="curr-sym">${cfg.currencySymbol || '₹'}</span>${amt}</div>
-                <div class="tier-name-label">${tierLabels[idx % tierLabels.length]}</div>
-            `;
-            card.addEventListener('click', () => {
-                document.querySelectorAll('.donation-card').forEach(c => c.classList.remove('active'));
-                card.classList.add('active');
-                STATE.selectedAmount = Number(amt);
-                const customInput = document.getElementById('custom-amount');
-                if (customInput) customInput.value = '';
-                document.getElementById('amount-warning').style.display = 'none';
-                updateRealQRCode();
-            });
-            tiersContainer.appendChild(card);
-        });
-    }
-
-    if (cfg.socials) {
-        const k = cfg.socials;
-        if (k.kick) {
-            document.getElementById('nav-link-kick').href = k.kick;
-            document.getElementById('foot-link-kick').href = k.kick;
-            document.getElementById('social-card-kick').href = k.kick;
-            document.getElementById('btn-kick-sidebar').href = k.kick;
-        }
-        if (k.instagram) {
-            document.getElementById('nav-link-insta').href = k.instagram;
-            document.getElementById('foot-link-insta').href = k.instagram;
-            document.getElementById('social-card-insta').href = k.instagram;
-        }
-        if (k.youtube) {
-            document.getElementById('nav-link-yt').href = k.youtube;
-            document.getElementById('foot-link-yt').href = k.youtube;
-            document.getElementById('social-card-yt').href = k.youtube;
-        }
-        if (k.discord) {
-            document.getElementById('nav-link-discord').href = k.discord;
-            document.getElementById('foot-link-discord').href = k.discord;
-            document.getElementById('social-card-discord').href = k.discord;
-        }
-    }
-
-    document.getElementById('dyn-footer-brand').textContent = cfg.websiteName;
-    document.getElementById('dyn-footer-copy-brand').textContent = cfg.websiteName;
-    document.getElementById('dyn-footer-love-text').textContent = cfg.homeTexts.footerText;
-    document.getElementById('dyn-thankyou-desc').innerHTML = `${escapeHtml(cfg.thankYouMessage)}<br>Please wait while ${escapeHtml(cfg.streamerName)} verifies your payment.`;
-
-    updateVoiceScriptPreview();
-    renderUI();
+body {
+    background: radial-gradient(circle at 50% 15%, var(--bg-royal) 0%, var(--bg-dark) 80%);
+    color: var(--white);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    padding-top: 80px;
+    position: relative;
+    overflow-x: hidden;
 }
 
-function renderUI() {
-    STATE.goalCurrent = STATE.approvedSupporters.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    
-    let pinnedItem = STATE.approvedSupporters.find(item => item.pinned === true);
-    let highestItem = { name: "No Top Supporter", amount: 0, isPinned: false };
-
-    if (pinnedItem) {
-        highestItem = { name: pinnedItem.name, amount: Number(pinnedItem.amount), isPinned: true };
-    } else {
-        STATE.approvedSupporters.forEach(item => {
-            if (Number(item.amount) > highestItem.amount) {
-                highestItem = { name: item.name, amount: Number(item.amount), isPinned: false };
-            }
-        });
-    }
-    STATE.topSupporter = highestItem;
-
-    const sym = STATE.settings.currencySymbol || '₹';
-
-    const raisedEl = document.getElementById('raised-text');
-    const targetEl = document.getElementById('target-text');
-    const percentageEl = document.getElementById('percentage-text');
-    const remainingEl = document.getElementById('remaining-text');
-    const goalBar = document.getElementById('goal-bar');
-
-    if (raisedEl) raisedEl.textContent = `${sym}${STATE.goalCurrent.toLocaleString()}`;
-    if (targetEl) targetEl.textContent = `Target ${sym}${STATE.goalTarget.toLocaleString()}`;
-    
-    const percentage = Math.min(Math.round((STATE.goalCurrent / STATE.goalTarget) * 100), 100);
-    const remaining = Math.max(STATE.goalTarget - STATE.goalCurrent, 0);
-
-    if (goalBar) goalBar.style.width = `${percentage}%`;
-    if (percentageEl) percentageEl.textContent = `${percentage}% Completed`;
-    if (remainingEl) remainingEl.textContent = `${sym}${remaining.toLocaleString()} Remaining`;
-
-    const statSupporters = document.getElementById('stat-total-supporters');
-    const statRaised = document.getElementById('stat-total-raised');
-    const statHighest = document.getElementById('stat-highest-donation');
-
-    if (statSupporters) statSupporters.textContent = STATE.approvedSupporters.length;
-    if (statRaised) statRaised.textContent = `${sym}${STATE.goalCurrent.toLocaleString()}`;
-    if (statHighest) statHighest.textContent = `${sym}${STATE.topSupporter.amount.toLocaleString()}`;
-
-    const topNameEl = document.getElementById('top-name');
-    const topAmountEl = document.getElementById('top-amount');
-    const topAvatarEl = document.getElementById('top-avatar-letter');
-    const topBadgeEl = document.getElementById('top-supporter-badge');
-
-    if (topNameEl) topNameEl.textContent = STATE.topSupporter.name;
-    if (topAmountEl) topAmountEl.textContent = `${sym}${STATE.topSupporter.amount.toLocaleString()}`;
-    if (topAvatarEl) {
-        topAvatarEl.textContent = STATE.topSupporter.name !== "No Top Supporter" ? STATE.topSupporter.name.charAt(0).toUpperCase() : "?";
-    }
-    if (topBadgeEl) {
-        topBadgeEl.textContent = STATE.topSupporter.isPinned ? "📌 PINNED" : "LEGEND";
-    }
-
-    const feed = document.getElementById('supporters-feed');
-    if (feed) {
-        feed.innerHTML = '';
-        if (STATE.approvedSupporters.length === 0) {
-            feed.innerHTML = '<div style="color: var(--text-sub); font-size:0.8rem; text-align:center;">No recent superchats yet.</div>';
-        } else {
-            const displayFeedList = [...STATE.approvedSupporters].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
-            displayFeedList.slice(0, 10).forEach(s => {
-                const card = document.createElement('div');
-                card.className = 'feed-card';
-                card.innerHTML = `
-                    <div class="feed-card-header">
-                        <span class="feed-card-user">${s.pinned ? '📌 ' : ''}${escapeHtml(s.name)}</span>
-                        <span class="feed-card-amount">${sym}${s.amount}</span>
-                    </div>
-                    <div class="feed-card-body">${escapeHtml(s.msg || STATE.settings.fallbackMessage)}</div>
-                `;
-                feed.appendChild(card);
-            });
-        }
-    }
-
-    renderPendingQueue();
-    renderApprovedAdminList();
-    renderAdminsList();
-    renderNotificationLogs();
-    renderAuditLogs();
-    renderAnalyticsDashboard();
-    updateRealQRCode();
+/* CURSOR SPOTLIGHT */
+#cursor-glow {
+    position: fixed;
+    width: 380px;
+    height: 380px;
+    background: radial-gradient(circle, rgba(0, 240, 255, 0.15) 0%, rgba(255, 215, 0, 0.08) 40%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    transition: width 0.2s, height 0.2s;
 }
 
-function renderAnalyticsDashboard() {
-    const sym = STATE.settings.currencySymbol || '₹';
-    const approved = STATE.approvedSupporters || [];
-    const pending = STATE.pendingQueue || [];
-
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const yesterdayStart = todayStart - 86400000;
-    const weekStart = todayStart - (7 * 86400000);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-
-    let revToday = 0, revYesterday = 0, revWeek = 0, revMonth = 0, revAll = 0;
-    let hourlyHeatmap = new Array(24).fill(0);
-    let amountsList = [];
-
-    let topToday = { name: "-", amount: 0 };
-    let topMonth = { name: "-", amount: 0 };
-    let largestMsg = { name: "-", len: 0 };
-
-    approved.forEach(item => {
-        const amt = Number(item.amount) || 0;
-        const ts = item.approvedAt || item.timestamp || 0;
-        revAll += amt;
-        amountsList.push(amt);
-
-        if (ts >= todayStart) {
-            revToday += amt;
-            if (amt > topToday.amount) topToday = { name: item.name, amount: amt };
-        } else if (ts >= yesterdayStart && ts < todayStart) {
-            revYesterday += amt;
-        }
-
-        if (ts >= weekStart) revWeek += amt;
-        if (ts >= monthStart) {
-            revMonth += amt;
-            if (amt > topMonth.amount) topMonth = { name: item.name, amount: amt };
-        }
-
-        if (ts > 0) {
-            const hour = new Date(ts).getHours();
-            hourlyHeatmap[hour] += amt;
-        }
-
-        if (item.msg && item.msg.length > largestMsg.len) {
-            largestMsg = { name: item.name, len: item.msg.length };
-        }
-    });
-
-    if (document.getElementById('an-rev-today')) document.getElementById('an-rev-today').textContent = `${sym}${revToday.toLocaleString()}`;
-    if (document.getElementById('an-rev-yesterday')) document.getElementById('an-rev-yesterday').textContent = `${sym}${revYesterday.toLocaleString()}`;
-    if (document.getElementById('an-rev-week')) document.getElementById('an-rev-week').textContent = `${sym}${revWeek.toLocaleString()}`;
-    if (document.getElementById('an-rev-month')) document.getElementById('an-rev-month').textContent = `${sym}${revMonth.toLocaleString()}`;
-    if (document.getElementById('an-rev-all')) document.getElementById('an-rev-all').textContent = `${sym}${revAll.toLocaleString()}`;
-
-    amountsList.sort((a, b) => a - b);
-    const count = amountsList.length;
-    const avg = count > 0 ? Math.round(revAll / count) : 0;
-    const highest = count > 0 ? amountsList[count - 1] : 0;
-    const lowest = count > 0 ? amountsList[0] : 0;
-    
-    let median = 0;
-    if (count > 0) {
-        median = count % 2 === 0 ? Math.round((amountsList[count / 2 - 1] + amountsList[count / 2]) / 2) : amountsList[Math.floor(count / 2)];
-    }
-
-    if (document.getElementById('an-stat-approved')) document.getElementById('an-stat-approved').textContent = approved.length;
-    if (document.getElementById('an-stat-pending')) document.getElementById('an-stat-pending').textContent = pending.length;
-    if (document.getElementById('an-stat-rejected')) document.getElementById('an-stat-rejected').textContent = "0";
-    if (document.getElementById('an-stat-avg')) document.getElementById('an-stat-avg').textContent = `${sym}${avg.toLocaleString()}`;
-    if (document.getElementById('an-stat-median')) document.getElementById('an-stat-median').textContent = `${sym}${median.toLocaleString()}`;
-    if (document.getElementById('an-stat-highest')) document.getElementById('an-stat-highest').textContent = `${sym}${highest.toLocaleString()}`;
-    if (document.getElementById('an-stat-lowest')) document.getElementById('an-stat-lowest').textContent = `${sym}${lowest.toLocaleString()}`;
-
-    const target = STATE.goalTarget || 10000;
-    const pct = Math.min(Math.round((revMonth / target) * 100), 100);
-    const rem = Math.max(target - revMonth, 0);
-
-    let estCompletion = "N/A";
-    const dayOfMonth = now.getDate();
-    if (revMonth > 0 && rem > 0 && dayOfMonth > 0) {
-        const dailyRate = revMonth / dayOfMonth;
-        const daysNeeded = Math.ceil(rem / dailyRate);
-        const estDate = new Date();
-        estDate.setDate(now.getDate() + daysNeeded);
-        estCompletion = estDate.toLocaleDateString();
-    } else if (rem === 0) {
-        estCompletion = "Goal Reached! 🎉";
-    }
-
-    if (document.getElementById('an-goal-target')) document.getElementById('an-goal-target').textContent = `${sym}${target.toLocaleString()}`;
-    if (document.getElementById('an-goal-pct')) document.getElementById('an-goal-pct').textContent = `${pct}%`;
-    if (document.getElementById('an-goal-rem')) document.getElementById('an-goal-rem').textContent = `${sym}${rem.toLocaleString()}`;
-    if (document.getElementById('an-goal-est')) document.getElementById('an-goal-est').textContent = estCompletion;
-
-    let maxHour = 0, maxHourVal = 0;
-    hourlyHeatmap.forEach((val, h) => {
-        if (val > maxHourVal) { maxHourVal = val; maxHour = h; }
-    });
-    const peakHourText = maxHourVal > 0 ? `${maxHour}:00 - ${maxHour + 1}:00 (${sym}${maxHourVal})` : "N/A";
-
-    if (document.getElementById('an-top-today')) document.getElementById('an-top-today').textContent = topToday.amount > 0 ? `${topToday.name} (${sym}${topToday.amount})` : "-";
-    if (document.getElementById('an-top-month')) document.getElementById('an-top-month').textContent = topMonth.amount > 0 ? `${topMonth.name} (${sym}${topMonth.amount})` : "-";
-    if (document.getElementById('an-peak-hour')) document.getElementById('an-peak-hour').textContent = peakHourText;
-    if (document.getElementById('an-largest-msg')) document.getElementById('an-largest-msg').textContent = largestMsg.len > 0 ? `${largestMsg.name} (${largestMsg.len} chars)` : "-";
-
-    const heatmapGrid = document.getElementById('heatmap-grid');
-    if (heatmapGrid) {
-        heatmapGrid.innerHTML = '';
-        const maxHeat = Math.max(...hourlyHeatmap, 1);
-        for (let h = 0; h < 24; h++) {
-            const val = hourlyHeatmap[h];
-            const intensity = val > 0 ? Math.min(val / maxHeat, 1) : 0;
-            const cell = document.createElement('div');
-            cell.style.padding = "6px 2px";
-            cell.style.textAlign = "center";
-            cell.style.fontSize = "0.65rem";
-            cell.style.borderRadius = "4px";
-            cell.style.background = val > 0 ? `rgba(255, 215, 0, ${0.2 + intensity * 0.8})` : "rgba(255,255,255,0.05)";
-            cell.style.color = val > 0 ? "#000" : "var(--text-sub)";
-            cell.style.fontWeight = val > 0 ? "800" : "normal";
-            cell.title = `${h}:00 - ₹${val}`;
-            cell.textContent = `${h}h`;
-            heatmapGrid.appendChild(cell);
-        }
-    }
-
-    if (window.Chart && document.getElementById('chart-revenue-daily')) {
-        renderDailyChart(approved);
-        renderTierDistributionChart(approved);
-    }
+/* PARTICLES CANVAS */
+#particle-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 0;
 }
 
-function renderDailyChart(approvedData) {
-    const ctx = document.getElementById('chart-revenue-daily').getContext('2d');
-    const last7Days = [];
-    const revenueByDay = [];
-
-    for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const dayStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-        last7Days.push(dayStr);
-
-        const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-        const dayEnd = dayStart + 86400000;
-
-        const daySum = approvedData.reduce((sum, item) => {
-            const ts = item.approvedAt || item.timestamp || 0;
-            return (ts >= dayStart && ts < dayEnd) ? sum + Number(item.amount || 0) : sum;
-        }, 0);
-
-        revenueByDay.push(daySum);
-    }
-
-    if (chartInstances.daily) chartInstances.daily.destroy();
-
-    chartInstances.daily = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: last7Days,
-            datasets: [{
-                label: 'Daily Revenue (₹)',
-                data: revenueByDay,
-                borderColor: '#FFD700',
-                backgroundColor: 'rgba(255, 215, 0, 0.15)',
-                fill: true,
-                tension: 0.3
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: '#A0B3C6' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                y: { ticks: { color: '#A0B3C6' }, grid: { color: 'rgba(255,255,255,0.05)' } }
-            }
-        }
-    });
+.container {
+    max-width: 1380px;
+    margin: 0 auto;
+    padding: 20px 15px;
+    position: relative;
+    z-index: 2;
 }
 
-function renderTierDistributionChart(approvedData) {
-    const ctx = document.getElementById('chart-tier-distribution').getContext('2d');
-    const tiers = { "Rookie (₹40)": 0, "Gamer (₹50)": 0, "Pro (₹100)": 0, "Elite (₹250)": 0, "Hero (₹500+)": 0 };
-
-    approvedData.forEach(item => {
-        const amt = Number(item.amount) || 0;
-        if (amt >= 500) tiers["Hero (₹500+)"]++;
-        else if (amt >= 250) tiers["Elite (₹250)"]++;
-        else if (amt >= 100) tiers["Pro (₹100)"]++;
-        else if (amt >= 50) tiers["Gamer (₹50)"]++;
-        else tiers["Rookie (₹40)"]++;
-    });
-
-    if (chartInstances.tier) chartInstances.tier.destroy();
-
-    chartInstances.tier = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: Object.keys(tiers),
-            datasets: [{
-                data: Object.values(tiers),
-                backgroundColor: ['#00F0FF', '#10B981', '#FFD700', '#FF007F', '#A855F7']
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: { legend: { position: 'bottom', labels: { color: '#A0B3C6', font: { size: 10 } } } }
-        }
-    });
+/* ================= WELCOME SCREEN ================= */
+#welcome-screen {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: radial-gradient(circle at 50% 30%, #0B2B4A 0%, #030B17 90%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.6s ease;
 }
 
-function populateSettingsForm() {
-    const s = STATE.settings;
-    document.getElementById('set-website-name').value = s.websiteName || '';
-    document.getElementById('set-streamer-name').value = s.streamerName || '';
-    document.getElementById('set-tagline').value = s.tagline || '';
-    document.getElementById('set-upi-id').value = s.upiId || '';
-    document.getElementById('set-suggested-amounts').value = Array.isArray(s.suggestedAmounts) ? s.suggestedAmounts.join(', ') : '';
-    document.getElementById('set-min-amount').value = s.minAmount || 40;
-    document.getElementById('set-max-amount').value = s.maxAmount || 50000;
-    document.getElementById('set-goal-target').value = s.goalTarget || 10000;
-    document.getElementById('set-goal-title').value = s.goalTitle || '';
-    document.getElementById('set-currency-symbol').value = s.currencySymbol || '₹';
-    document.getElementById('set-thankyou-msg').value = s.thankYouMessage || '';
-
-    if (s.emailNotifications) {
-        document.getElementById('set-email-enabled').value = String(s.emailNotifications.enabled !== false);
-        document.getElementById('set-emailjs-service').value = s.emailNotifications.serviceId || '';
-        document.getElementById('set-emailjs-template').value = s.emailNotifications.templateId || '';
-        document.getElementById('set-emailjs-publickey').value = s.emailNotifications.publicKey || '';
-        document.getElementById('set-email-sender-name').value = s.emailNotifications.senderName || 'Payuu Live Dashboard';
-        document.getElementById('set-email-reply-to').value = s.emailNotifications.replyTo || 'support@payuulive.com';
-        document.getElementById('set-email-subject').value = s.emailNotifications.subject || '🔔 New Support Request - Payuu Live';
-    }
-
-    if (s.voice) {
-        document.getElementById('set-voice-enabled').value = String(s.voice.enabled !== false);
-        document.getElementById('set-voice-language').value = s.voice.language || 'en-IN';
-        document.getElementById('set-voice-gender').value = s.voice.gender || 'female';
-        document.getElementById('set-voice-style').value = s.voice.style || 'excited';
-        document.getElementById('set-voice-pause').value = String(s.voice.pauseMs !== undefined ? s.voice.pauseMs : 500);
-        document.getElementById('set-voice-volume-pct').value = s.voice.volumePct !== undefined ? s.voice.volumePct : 90;
-        document.getElementById('set-voice-pitch').value = s.voice.pitch || 1.2;
-        document.getElementById('set-voice-rate').value = s.voice.rate || 1.0;
-        document.getElementById('set-voice-script').value = s.voice.script || DEFAULT_SETTINGS.voice.script;
-    }
-
-    if (s.socials) {
-        document.getElementById('set-social-kick').value = s.socials.kick || '';
-        document.getElementById('set-social-insta').value = s.socials.instagram || '';
-        document.getElementById('set-social-yt').value = s.socials.youtube || '';
-        document.getElementById('set-social-discord').value = s.socials.discord || '';
-        document.getElementById('set-social-fb').value = s.socials.facebook || '';
-        document.getElementById('set-social-twitter').value = s.socials.twitter || '';
-        document.getElementById('set-social-website').value = s.socials.website || '';
-    }
-
-    if (s.overlay) {
-        document.getElementById('set-overlay-duration').value = s.overlay.duration || 12;
-        document.getElementById('set-overlay-volume').value = s.overlay.volume || 0.8;
-        document.getElementById('set-overlay-confetti').value = String(s.overlay.confetti);
-        document.getElementById('set-overlay-sound').value = String(s.overlay.sound);
-        document.getElementById('set-overlay-animation').value = s.overlay.animation || 'bounce';
-    }
-
-    if (s.homeTexts) {
-        document.getElementById('set-welcome-title').value = s.homeTexts.welcomeTitle || '';
-        document.getElementById('set-welcome-subtitle').value = s.homeTexts.welcomeSubtitle || '';
-        document.getElementById('set-btn-text').value = s.homeTexts.supportBtnText || '';
-        document.getElementById('set-footer-text').value = s.homeTexts.footerText || '';
-    }
-
-    updateVoiceScriptPreview();
+#welcome-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
 }
 
-// EVENT BINDINGS
-document.addEventListener('DOMContentLoaded', () => {
-    initGoldenParticles();
-    initFirebaseListeners();
+.welcome-logo-container {
+    position: relative;
+    width: 140px;
+    height: 140px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
-    const scriptTextarea = document.getElementById('set-voice-script');
-    if (scriptTextarea) {
-        scriptTextarea.addEventListener('input', updateVoiceScriptPreview);
-    }
+.logo-ring-aura {
+    position: absolute;
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    border: 3px dashed var(--gold-primary);
+    box-shadow: 0 0 25px var(--gold-glow);
+    animation: spinRing 12s linear infinite;
+}
 
-    const testVoiceBtn = document.getElementById('btn-test-voice');
-    if (testVoiceBtn) {
-        testVoiceBtn.addEventListener('click', () => {
-            const voiceSettings = {
-                enabled: document.getElementById('set-voice-enabled').value === 'true',
-                language: document.getElementById('set-voice-language').value,
-                gender: document.getElementById('set-voice-gender').value,
-                style: document.getElementById('set-voice-style').value,
-                pitch: parseFloat(document.getElementById('set-voice-pitch').value) || 1.2,
-                rate: parseFloat(document.getElementById('set-voice-rate').value) || 1.0,
-                volumePct: parseFloat(document.getElementById('set-voice-volume-pct').value) || 90,
-                pauseMs: parseInt(document.getElementById('set-voice-pause').value) || 500,
-                script: document.getElementById('set-voice-script').value || DEFAULT_SETTINGS.voice.script
-            };
+@keyframes spinRing {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
 
-            const sampleItem = {
-                name: "Rahul",
-                amount: 500,
-                msg: "Love your stream!",
-                dateSubmitted: new Date().toLocaleDateString(),
-                timeSubmitted: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            };
+.welcome-logo-img {
+    width: 82%; height: 82%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--gold-primary);
+    box-shadow: 0 0 25px var(--gold-glow);
+}
 
-            voiceManagerEngine.speak(sampleItem, { ...STATE.settings, voice: voiceSettings }, () => {
-                console.log("Test voice announcement completed.");
-            });
-        });
-    }
+.welcome-title {
+    font-family: var(--font-display);
+    font-size: 3.5rem;
+    font-weight: 900;
+    letter-spacing: 4px;
+    background: var(--gold-grad);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 20px var(--gold-glow));
+}
 
-    const settingsForm = document.getElementById('admin-settings-form');
-    if (settingsForm) {
-        settingsForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
+.welcome-subtitle {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    letter-spacing: 4px;
+    color: var(--cyan-neon);
+    margin-top: 6px;
+    margin-bottom: 35px;
+}
 
-            if (STATE.currentAdmin && STATE.currentAdmin.role !== 'owner') {
-                alert("Access Denied: Only Owners can modify settings.");
-                return;
-            }
+.btn-enter-dashboard {
+    background: var(--gold-grad);
+    border: none;
+    padding: 16px 45px;
+    border-radius: 30px;
+    color: #030B17;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    cursor: pointer;
+    box-shadow: 0 0 30px var(--gold-glow);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: var(--transition-smooth);
+    animation: pulseButton 2s infinite ease-in-out;
+}
 
-            const logoFile = document.getElementById('set-logo-file').files[0];
-            const faviconFile = document.getElementById('set-favicon-file').files[0];
-            const qrFile = document.getElementById('set-qr-file').files[0];
+@keyframes pulseButton {
+    0%, 100% { box-shadow: 0 0 20px var(--gold-glow); }
+    50% { box-shadow: 0 0 40px rgba(255, 215, 0, 0.9); }
+}
 
-            let logoUrl = STATE.settings.logoUrl;
-            let faviconUrl = STATE.settings.faviconUrl;
-            let qrCodeUrl = STATE.settings.qrCodeUrl;
+.btn-enter-dashboard:hover {
+    transform: translateY(-3px) scale(1.03);
+}
 
-            try {
-                if (logoFile) logoUrl = await fileToBase64(logoFile);
-                if (faviconFile) faviconUrl = await fileToBase64(faviconFile);
-                if (qrFile) qrCodeUrl = await fileToBase64(qrFile);
+/* ================= STICKY NAVBAR ================= */
+.navbar-sticky {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 75px;
+    background: rgba(7, 25, 47, 0.88);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--glass-border);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+}
 
-                const suggestedRaw = document.getElementById('set-suggested-amounts').value;
-                const suggestedArray = suggestedRaw.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0);
+.nav-container {
+    max-width: 1380px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
 
-                const updatedSettings = {
-                    websiteName: document.getElementById('set-website-name').value.trim(),
-                    streamerName: document.getElementById('set-streamer-name').value.trim(),
-                    tagline: document.getElementById('set-tagline').value.trim(),
-                    logoUrl: logoUrl,
-                    faviconUrl: faviconUrl,
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
 
-                    upiId: document.getElementById('set-upi-id').value.trim(),
-                    qrCodeUrl: qrCodeUrl,
-                    suggestedAmounts: suggestedArray.length > 0 ? suggestedArray : DEFAULT_SETTINGS.suggestedAmounts,
-                    minAmount: Number(document.getElementById('set-min-amount').value) || 40,
-                    maxAmount: Number(document.getElementById('set-max-amount').value) || 50000,
+.nav-logo-img {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: 2px solid var(--gold-primary);
+    box-shadow: 0 0 10px var(--gold-glow);
+    object-fit: cover;
+}
 
-                    goalTarget: Number(document.getElementById('set-goal-target').value) || 10000,
-                    goalTitle: document.getElementById('set-goal-title').value.trim(),
-                    currencySymbol: document.getElementById('set-currency-symbol').value.trim() || '₹',
-                    thankYouMessage: document.getElementById('set-thankyou-msg').value.trim(),
+.nav-brand-name {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 900;
+    color: var(--white);
+    letter-spacing: 1px;
+}
 
-                    emailNotifications: {
-                        enabled: document.getElementById('set-email-enabled').value === 'true',
-                        serviceId: document.getElementById('set-emailjs-service').value.trim(),
-                        templateId: document.getElementById('set-emailjs-template').value.trim(),
-                        publicKey: document.getElementById('set-emailjs-publickey').value.trim(),
-                        senderName: document.getElementById('set-email-sender-name').value.trim(),
-                        replyTo: document.getElementById('set-email-reply-to').value.trim(),
-                        subject: document.getElementById('set-email-subject').value.trim()
-                    },
+.nav-brand-name span { color: var(--gold-primary); }
 
-                    voice: {
-                        enabled: document.getElementById('set-voice-enabled').value === 'true',
-                        language: document.getElementById('set-voice-language').value,
-                        gender: document.getElementById('set-voice-gender').value,
-                        style: document.getElementById('set-voice-style').value,
-                        pauseMs: Number(document.getElementById('set-voice-pause').value) || 500,
-                        pitch: Number(document.getElementById('set-voice-pitch').value) || 1.2,
-                        rate: Number(document.getElementById('set-voice-rate').value) || 1.0,
-                        volumePct: Number(document.getElementById('set-voice-volume-pct').value) || 90,
-                        script: document.getElementById('set-voice-script').value || DEFAULT_SETTINGS.voice.script
-                    },
+/* COMPACT NAV SOCIAL ICONS */
+.nav-social-compact {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
 
-                    socials: {
-                        kick: document.getElementById('set-social-kick').value.trim(),
-                        instagram: document.getElementById('set-social-insta').value.trim(),
-                        youtube: document.getElementById('set-social-yt').value.trim(),
-                        discord: document.getElementById('set-social-discord').value.trim(),
-                        facebook: document.getElementById('set-social-fb').value.trim(),
-                        twitter: document.getElementById('set-social-twitter').value.trim(),
-                        website: document.getElementById('set-social-website').value.trim()
-                    },
+.kick-nav-highlight {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(83, 252, 24, 0.12);
+    border: 1px solid var(--kick-green);
+    color: var(--kick-green);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-family: var(--font-display);
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-decoration: none;
+    box-shadow: 0 0 12px var(--kick-glow);
+    transition: var(--transition-smooth);
+}
 
-                    overlay: {
-                        duration: Number(document.getElementById('set-overlay-duration').value) || 12,
-                        volume: Number(document.getElementById('set-overlay-volume').value) || 0.8,
-                        confetti: document.getElementById('set-overlay-confetti').value === 'true',
-                        sound: document.getElementById('set-overlay-sound').value === 'true',
-                        animation: document.getElementById('set-overlay-animation').value
-                    },
+.kick-nav-highlight:hover {
+    background: rgba(83, 252, 24, 0.22);
+    box-shadow: 0 0 20px var(--kick-glow);
+    transform: translateY(-2px);
+}
 
-                    homeTexts: {
-                        welcomeTitle: document.getElementById('set-welcome-title').value.trim(),
-                        welcomeSubtitle: document.getElementById('set-welcome-subtitle').value.trim(),
-                        supportBtnText: document.getElementById('set-btn-text').value.trim(),
-                        footerText: document.getElementById('set-footer-text').value.trim()
-                    }
-                };
+.kick-svg-icon {
+    width: 14px; height: 14px;
+    display: inline-block;
+}
 
-                if (window.firebaseDB) {
-                    await window.firebaseDB.saveSettings(updatedSettings);
+.nav-live-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: #FF0000;
+    color: var(--white);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.62rem;
+    letter-spacing: 0.5px;
+}
 
-                    window.firebaseDB.logAuditAction({
-                        adminEmail: STATE.currentAdmin ? STATE.currentAdmin.email : "System",
-                        action: "Settings Change",
-                        supporterName: "N/A",
-                        amount: 0,
-                        details: "Updated site configuration and voice script settings"
-                    });
+.nav-social-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    font-size: 0.95rem;
+    transition: var(--transition-smooth);
+}
 
-                    alert("Settings updated successfully across the site!");
-                }
-            } catch (err) {
-                console.error("Error saving settings:", err);
-                alert("Failed to save settings. Please try again.");
-            }
-        });
-    }
-});
+.nav-social-icon:hover { transform: translateY(-2px); }
+.nav-social-icon.insta:hover { color: var(--pink-neon); border-color: var(--pink-neon); box-shadow: 0 0 12px rgba(255,0,127,0.5); }
+.nav-social-icon.yt:hover { color: #FF0000; border-color: #FF0000; box-shadow: 0 0 12px rgba(255,0,0,0.5); }
+.nav-social-icon.discord:hover { color: #5865F2; border-color: #5865F2; box-shadow: 0 0 12px rgba(88,101,242,0.5); }
+
+/* ================= HERO SECTION ================= */
+.hero-section {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.hero-logo-wrapper {
+    position: relative;
+    width: 140px; height: 140px;
+    margin: 0 auto 12px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.hero-ring-glow {
+    position: absolute;
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    border: 3px dashed var(--gold-primary);
+    box-shadow: 0 0 20px var(--gold-glow);
+    animation: spinRing 12s linear infinite;
+}
+
+.hero-logo-img {
+    width: 84%; height: 84%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--gold-primary);
+    box-shadow: 0 0 25px var(--gold-glow);
+}
+
+.hero-title-main {
+    font-family: var(--font-display);
+    font-size: 3.4rem;
+    font-weight: 900;
+    letter-spacing: 4px;
+    background: linear-gradient(180deg, #FFFFFF 0%, #FFE600 50%, #B37D00 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 25px var(--gold-glow));
+    line-height: 1;
+}
+
+.hero-subtitle {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    color: var(--pink-neon);
+    letter-spacing: 3px;
+    margin-top: 6px;
+    font-weight: 800;
+}
+
+.hero-description {
+    max-width: 600px;
+    margin: 12px auto 0 auto;
+    font-size: 0.88rem;
+    color: var(--text-sub);
+    line-height: 1.5;
+}
+
+/* ================= DASHBOARD GRID ================= */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 320px 1fr 340px;
+    gap: 22px;
+}
+
+.glass-panel {
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: 22px;
+    margin-bottom: 20px;
+    backdrop-filter: blur(16px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    transition: var(--transition-smooth);
+    position: relative;
+    overflow: hidden;
+}
+
+.glass-panel:hover {
+    border-color: var(--gold-primary);
+    box-shadow: 0 12px 35px rgba(255, 215, 0, 0.25);
+}
+
+.panel-header-title {
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--gold-primary);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* RIGHT PANEL: WATCH LIVE ON KICK CARD */
+.kick-live-panel {
+    border-color: var(--kick-green) !important;
+    background: linear-gradient(180deg, rgba(83, 252, 24, 0.08) 0%, rgba(7, 25, 47, 0.92) 100%);
+    box-shadow: 0 0 20px var(--kick-glow);
+}
+
+.kick-live-header {
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.kick-status-tag {
+    font-family: var(--font-display);
+    font-size: 0.78rem;
+    font-weight: 900;
+    color: var(--kick-green);
+    letter-spacing: 1px;
+}
+
+.kick-live-body {
+    text-align: center;
+}
+
+.kick-stream-title {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--white);
+}
+
+.kick-channel-url {
+    font-size: 0.78rem;
+    color: var(--text-sub);
+    margin-top: 2px;
+    margin-bottom: 14px;
+}
+
+.btn-watch-kick {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    background: var(--kick-green);
+    color: #000000;
+    font-family: var(--font-display);
+    font-size: 0.88rem;
+    font-weight: 900;
+    padding: 12px;
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    box-shadow: 0 0 20px var(--kick-glow);
+    transition: var(--transition-smooth);
+}
+
+.btn-watch-kick:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(83, 252, 24, 0.8);
+    background: #6BFC35;
+}
+
+.kick-btn-svg {
+    width: 16px; height: 16px;
+}
+
+/* GOAL PROGRESS BAR */
+.goal-numbers {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.05rem;
+}
+
+.goal-bar-outer {
+    width: 100%;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    overflow: hidden;
+    margin: 12px 0;
+    position: relative;
+}
+
+.goal-bar-inner {
+    height: 100%;
+    width: 0%;
+    background: var(--gold-grad);
+    border-radius: 12px;
+    transition: width 0.8s cubic-bezier(0.1, 0.5, 0.1, 1);
+    position: relative;
+}
+
+.goal-bar-inner::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.goal-metrics-split {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--text-sub);
+    font-weight: 600;
+}
+
+/* STREAM STATS MINI GRID */
+.stats-mini-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.stat-box {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    text-align: center;
+}
+
+.stat-icon {
+    font-size: 1.2rem;
+    color: var(--gold-primary);
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--white);
+}
+
+.stat-label {
+    font-size: 0.68rem;
+    color: var(--text-sub);
+    text-transform: uppercase;
+    margin-top: 2px;
+}
+
+/* DONATION TIER CARDS */
+.donation-tiers-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 15px;
+}
+
+.donation-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--radius-md);
+    padding: 12px 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.donation-card:hover {
+    border-color: var(--gold-primary);
+    background: rgba(255, 215, 0, 0.08);
+    transform: translateY(-3px);
+}
+
+.donation-card.active {
+    background: rgba(255, 215, 0, 0.18);
+    border-color: var(--gold-primary);
+    box-shadow: 0 0 20px var(--gold-glow);
+    transform: translateY(-3px);
+}
+
+.tier-badge-icon { font-size: 1.3rem; margin-bottom: 4px; }
+.tier-amount-display { font-family: var(--font-display); font-weight: 900; font-size: 1.1rem; color: var(--white); }
+.donation-card.active .tier-amount-display { color: var(--gold-primary); }
+.tier-name-label { font-size: 0.68rem; color: var(--text-sub); text-transform: uppercase; font-weight: 700; margin-top: 2px; }
+
+/* FORM INPUTS */
+.input-field-group {
+    margin-bottom: 14px;
+}
+
+.floating-label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--gold-primary);
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.input-with-icon {
+    position: relative;
+}
+
+.input-prefix-icon {
+    position: absolute;
+    left: 14px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-sub);
+    font-size: 0.9rem;
+}
+
+.form-input {
+    width: 100%;
+    background: #020812 !important;
+    border: 1px solid rgba(255, 215, 0, 0.35) !important;
+    border-radius: var(--radius-md);
+    padding: 12px 14px 12px 40px;
+    color: #FFFFFF !important;
+    font-size: 0.9rem;
+    outline: none;
+    transition: var(--transition-smooth);
+}
+
+.form-input.text-area {
+    height: 60px;
+    resize: none;
+    padding-top: 10px;
+}
+
+.form-input:focus {
+    border-color: var(--gold-primary) !important;
+    box-shadow: 0 0 15px var(--gold-glow);
+}
+
+.char-counter {
+    text-align: right;
+    font-size: 0.7rem;
+    color: var(--text-sub);
+    margin-top: 4px;
+}
+
+.validation-warning {
+    color: #EF4444;
+    font-size: 0.75rem;
+    margin-top: 4px;
+    display: none;
+}
+
+/* MEGA SUPPORT BUTTON */
+.btn-support-mega {
+    width: 100%;
+    background: var(--gold-grad);
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 16px;
+    color: #030B17;
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    margin-top: 10px;
+    box-shadow: 0 0 25px var(--gold-glow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    transition: var(--transition-smooth);
+}
+
+.btn-support-mega:hover {
+    transform: translateY(-3px) scale(1.01);
+    box-shadow: 0 0 35px rgba(255, 215, 0, 0.85);
+}
+
+.secure-checkout-tag {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-sub);
+    margin-top: 12px;
+}
+
+/* TOP SUPPORTER CARD */
+.top-supporter-panel {
+    text-align: center;
+}
+
+.top-supporter-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.top-avatar-frame {
+    position: relative;
+    width: 90px; height: 90px;
+    margin-bottom: 10px;
+}
+
+.gold-ring-animated {
+    position: absolute;
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    border: 3px dashed var(--gold-primary);
+    box-shadow: 0 0 15px var(--gold-glow);
+    animation: spinRing 10s linear infinite;
+}
+
+.top-avatar-placeholder {
+    width: 82%; height: 82%;
+    border-radius: 50%;
+    background: var(--bg-royal);
+    border: 2px solid var(--gold-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--gold-primary);
+    margin: 9px auto;
+}
+
+.legend-badge {
+    background: var(--gold-grad);
+    color: #030B17;
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 900;
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-bottom: 6px;
+}
+
+.top-supporter-name {
+    font-weight: 800;
+    font-size: 1.05rem;
+}
+
+.top-supporter-amount {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    font-weight: 900;
+    color: var(--gold-primary);
+}
+
+/* RECENT SUPPORTERS CHAT FEED */
+.supporters-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.feed-card {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255, 215, 0, 0.2);
+    overflow: hidden;
+    animation: slideIn 0.4s ease-out;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.feed-card-header {
+    background: rgba(255, 215, 0, 0.12);
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.feed-card-user { font-weight: 700; font-size: 0.85rem; }
+.feed-card-amount { font-family: var(--font-display); font-weight: 900; color: var(--gold-primary); font-size: 0.9rem; }
+.feed-card-body { padding: 8px 12px; font-size: 0.78rem; color: var(--text-sub); }
+
+/* QR CODE CARD */
+.qr-card-center {
+    text-align: center;
+}
+
+.qr-code-wrapper {
+    width: 160px; height: 160px;
+    margin: 0 auto 12px auto;
+    background: var(--white);
+    padding: 8px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+}
+
+.qr-code-wrapper img { width: 100%; height: 100%; object-fit: contain; }
+
+.upi-id-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px dashed var(--gold-primary);
+    padding: 8px;
+    border-radius: 6px;
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 800;
+}
+
+.copy-icon { cursor: pointer; color: var(--gold-primary); }
+
+.payment-apps-row {
+    margin-top: 8px;
+    font-size: 0.72rem;
+    color: var(--text-sub);
+}
+
+/* ================= CONNECT WITH ME SECTION ================= */
+.connect-section {
+    margin-top: 25px;
+    margin-bottom: 30px;
+}
+
+.section-title-wrap {
+    text-align: center;
+    margin-bottom: 18px;
+}
+
+.section-heading {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    color: var(--gold-primary);
+}
+
+.section-subtext {
+    font-size: 0.82rem;
+    color: var(--text-sub);
+    margin-top: 2px;
+}
+
+/* EVEN 4-COLUMN GRID LAYOUT */
+.social-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+}
+
+.social-glass-card {
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: 16px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: var(--white);
+    transition: var(--transition-smooth);
+    position: relative;
+}
+
+.social-glass-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--gold-primary);
+    box-shadow: 0 10px 25px rgba(255, 215, 0, 0.25);
+}
+
+.social-icon-wrapper {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+
+.social-glass-card.kick .social-icon-wrapper { color: var(--kick-green); border-color: var(--kick-green); background: rgba(83, 252, 24, 0.1); }
+.social-glass-card.instagram .social-icon-wrapper { color: var(--pink-neon); border-color: var(--pink-neon); background: rgba(255, 0, 127, 0.1); }
+.social-glass-card.youtube .social-icon-wrapper { color: #FF0000; border-color: #FF0000; background: rgba(255, 0, 0, 0.1); }
+.social-glass-card.discord .social-icon-wrapper { color: #5865F2; border-color: #5865F2; background: rgba(88, 101, 242, 0.1); }
+
+.kick-card-svg {
+    width: 20px; height: 20px;
+}
+
+.social-platform-name {
+    font-family: var(--font-display);
+    font-size: 0.88rem;
+    font-weight: 800;
+}
+
+.primary-tag {
+    font-size: 0.58rem;
+    background: var(--kick-green);
+    color: #000;
+    padding: 2px 6px;
+    border-radius: 8px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.social-handle-text {
+    font-size: 0.72rem;
+    color: var(--text-sub);
+}
+
+.card-link-arrow {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--text-sub);
+    transition: var(--transition-smooth);
+}
+
+.social-glass-card:hover .card-link-arrow {
+    color: var(--gold-primary);
+    transform: translate(2px, -2px);
+}
+
+/* STREAMER ADMIN PANEL */
+.admin-panel {
+    display: none;
+    background: #020812;
+    border: 1px solid var(--gold-primary);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.admin-panel.active { display: block; }
+
+.pending-queue-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 12px;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+/* THANK YOU POPUP MODAL */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(3, 10, 22, 0.85);
+    backdrop-filter: blur(10px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: var(--transition-smooth);
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-box {
+    background: var(--bg-navy);
+    border: 2px solid var(--gold-primary);
+    border-radius: var(--radius-lg);
+    padding: 30px;
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 0 40px var(--gold-glow);
+}
+
+.modal-logo-img {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    border: 2px solid var(--gold-primary);
+    margin-bottom: 12px;
+}
+
+.modal-title {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    color: var(--gold-primary);
+}
+
+.modal-desc {
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    margin-top: 8px;
+    margin-bottom: 20px;
+}
+
+.btn-modal-close {
+    background: var(--gold-grad);
+    border: none;
+    padding: 10px 25px;
+    border-radius: 20px;
+    font-family: var(--font-display);
+    font-weight: 800;
+    cursor: pointer;
+}
+
+/* FOOTER */
+.footer-custom {
+    background: rgba(5, 14, 26, 0.95);
+    border-top: 1px solid var(--glass-border);
+    padding: 35px 15px;
+    text-align: center;
+    margin-top: 30px;
+}
+
+.footer-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.footer-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.footer-logo-img {
+    width: 38px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--gold-primary);
+}
+
+.footer-brand-title {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    font-weight: 900;
+    color: var(--gold-primary);
+}
+
+.footer-community-heading {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--white);
+    margin-bottom: 18px;
+    letter-spacing: 1px;
+}
+
+.footer-social-row {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.footer-social-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    padding: 8px 18px;
+    color: var(--white);
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 700;
+    transition: var(--transition-smooth);
+}
+
+.footer-social-btn:hover { transform: translateY(-2px); }
+.footer-social-btn.kick:hover { border-color: var(--kick-green); color: var(--kick-green); box-shadow: 0 0 15px var(--kick-glow); }
+.footer-social-btn.insta:hover { border-color: var(--pink-neon); color: var(--pink-neon); box-shadow: 0 0 15px rgba(255,0,127,0.4); }
+.footer-social-btn.yt:hover { border-color: #FF0000; color: #FF0000; box-shadow: 0 0 15px rgba(255,0,0,0.4); }
+.footer-social-btn.discord:hover { border-color: #5865F2; color: #5865F2; box-shadow: 0 0 15px rgba(88,101,242,0.4); }
+
+.kick-footer-svg {
+    width: 14px; height: 14px;
+}
+
+.footer-copyright {
+    font-size: 0.78rem;
+    color: var(--text-sub);
+}
+
+.btn-admin-toggle {
+    background: none;
+    border: none;
+    color: var(--text-sub);
+    text-decoration: underline;
+    font-size: 0.75rem;
+    cursor: pointer;
+    margin-top: 14px;
+}
+
+/* RESPONSIVE BREAKPOINTS */
+@media (max-width: 1024px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .social-cards-grid { grid-template-columns: repeat(2, 1fr); }
+    .nav-social-compact { display: none; }
+}
+
+@media (max-width: 600px) {
+    .donation-tiers-grid { grid-template-columns: repeat(2, 1fr); }
+    .social-cards-grid { grid-template-columns: 1fr; }
+    .hero-title-main { font-size: 2.4rem; }
+    .welcome-title { font-size: 2.3rem; }
+}
+
+/* ====================================================
+   PHASE 1 APPENDED EXTENSION STYLES
+   Modal Actions, Verification Badges, & Admin Queue Cards
+   ==================================================== */
+
+.modal-header-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+}
+
+.modal-action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.btn-modal-action {
+    width: 100%;
+    padding: 14px;
+    border-radius: var(--radius-md);
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 800;
+    cursor: pointer;
+    border: none;
+    transition: var(--transition-smooth);
+}
+
+.btn-modal-action.confirm {
+    background: var(--gold-grad);
+    color: #030B17;
+    box-shadow: 0 0 20px var(--gold-glow);
+}
+
+.btn-modal-action.confirm:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.8);
+}
+
+.btn-modal-action.cancel {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-sub);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.btn-modal-action.cancel:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--white);
+}
+
+/* STATUS BADGES */
+.modal-status-badge {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+}
+
+.modal-status-badge.awaiting-verif {
+    background: rgba(234, 179, 8, 0.15);
+    border: 1px solid #EAB308;
+    color: #FACC15;
+}
+
+/* REDESIGNED ADMIN QUEUE CARDS */
+.admin-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.admin-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.admin-user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.admin-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg-royal);
+    border: 2px solid var(--gold-primary);
+    color: var(--gold-primary);
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-name {
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--white);
+}
+
+.admin-time {
+    font-size: 0.72rem;
+    color: var(--text-sub);
+}
+
+.admin-card-body {
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.admin-message {
+    font-size: 0.82rem;
+    color: var(--text-sub);
+    max-width: 70%;
+}
+
+.admin-amount {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: var(--gold-primary);
+}
+
+/* ADMIN BADGES */
+.status-pill {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.status-pill.awaiting-verif {
+    background: rgba(234, 179, 8, 0.2);
+    color: #FACC15;
+    border: 1px solid #EAB308;
+}
+
+.status-pill.awaiting-pay {
+    background: rgba(148, 163, 184, 0.2);
+    color: #94A3B8;
+    border: 1px solid #64748B;
+}
+
+.status-pill.rejected {
+    background: rgba(239, 68, 68, 0.2);
+    color: #EF4444;
+    border: 1px solid #EF4444;
+}
+
+.admin-actions-row {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.btn-admin-act {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.btn-admin-act.approve { background: #10B981; color: #FFF; }
+.btn-admin-act.approve:hover { background: #059669; }
+
+.btn-admin-act.reject { background: #EF4444; color: #FFF; }
+.btn-admin-act.reject:hover { background: #DC2626; }
+
+.btn-admin-act.details { background: rgba(255, 255, 255, 0.1); color: var(--white); border: 1px solid rgba(255, 255, 255, 0.2); }
+.btn-admin-act.details:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* DETAILS BODY STYLING */
+.details-body p {
+    margin-bottom: 10px;
+    font-size: 0.88rem;
+    color: var(--text-sub);
+}
+
+.details-body strong {
+    color: var(--gold-primary);
+}
