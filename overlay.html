@@ -892,47 +892,70 @@
            2. Normal SuperChat/support TTS
            ============================================================ */
 
-        function speakAlertVoice(
-            item,
-            onComplete
-        ) {
+      function speakAlertVoice(
+    item,
+    onComplete
+) {
 
-            const done =
-                typeof onComplete === "function"
-                    ? onComplete
-                    : () => {};
+    const done =
+        typeof onComplete === "function"
+            ? onComplete
+            : () => {};
 
-            /*
-               ORIGINAL RECORDING
-            */
+    /*
+       STEP 1 — INTRO TTS
+    */
 
-            if (
-                item?.voiceUrl &&
-                item.voiceEnabled === true &&
-                item.voiceStatus !== "rejected"
-            ) {
+    const name =
+        String(item?.name || "Anonymous").trim();
 
-                playOriginalSupporterVoice(
-                    item,
-                    done
-                );
+    const amount =
+        Number(item?.amount || 0);
 
-                return;
-            }
+    const message =
+        item?.msg
+            ? String(item.msg).trim()
+            : "";
 
-            /*
-               NORMAL TTS
-            */
+    const introText =
+        `New Support! ${name} supported ${amount} rupees.`;
 
-            const speechText =
-                buildSpeechText(item);
+    const speechText =
+        message
+            ? `${introText} Message: ${message}`
+            : introText;
 
-            speakTextWithTTS(
-                speechText,
-                done
-            );
+    /*
+       STEP 2 — AFTER TTS, PLAY ORIGINAL VOICE
+    */
+
+    const playOriginalVoice = () => {
+
+        const hasVoice =
+            item?.voiceUrl &&
+            item.voiceEnabled === true &&
+            item.voiceStatus !== "rejected";
+
+        if (!hasVoice) {
+            done();
+            return;
         }
 
+        playOriginalSupporterVoice(
+            item,
+            done
+        );
+    };
+
+    /*
+       PLAY INTRO TTS FIRST
+    */
+
+    speakTextWithTTS(
+        speechText,
+        playOriginalVoice
+    );
+}
         /* ============================================================
            UPDATE ALERT CARD
            ============================================================ */
