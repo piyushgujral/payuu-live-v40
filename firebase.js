@@ -34,14 +34,35 @@ window.firebaseDB = {
   listenNotificationLogs: function(callback) { db.ref("notificationLogs").limitToLast(25).on("value", (snapshot) => { const data = snapshot.val(); callback(data ? Object.keys(data).map(key => ({ ...data[key], _key: key })).reverse() : []); }); },
 
   uploadVoiceRecording: function(blob, fileName, contentType) {
-    if (!blob) return Promise.reject(new Error("No voice recording supplied."));
-    const type = contentType || blob.type || "audio/webm";
-    if (!type.toLowerCase().startsWith("audio/")) return Promise.reject(new Error("Only audio files are allowed."));
-    if (blob.size > 5 * 1024 * 1024) return Promise.reject(new Error("Voice recording exceeds the 5 MB limit."));
-    const safeName = String(fileName || ("supporter-" + Date.now() + ".webm")).replace(/[^a-zA-Z0-9._-]/g, "_");
-    const ref = storage.ref().child("superchat-voice/" + safeName);
-    return ref.put(blob, { contentType: type }).then(() => ref.getDownloadURL());
-  },
+  if (!blob) return Promise.reject(new Error("No voice recording supplied."));
+
+  const type = contentType || blob.type || "audio/webm";
+
+  if (!type.toLowerCase().startsWith("audio/")) {
+    return Promise.reject(new Error("Only audio files are allowed."));
+  }
+
+  if (blob.size > 5 * 1024 * 1024) {
+    return Promise.reject(new Error("Voice recording exceeds the 5 MB limit."));
+  }
+
+  return fetch("/api/upload-voice", {
+    method: "POST",
+    headers: {
+      "Content-Type": type
+    },
+    body: blob
+  })
+  .then(async response => {
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.voiceUrl) {
+      throw new Error(data.error || "Voice upload failed.");
+    }
+
+    return data.voiceUrl;
+  });
+},
 
   addPendingSupport: function(data) { const newRef = db.ref("pendingSupport").push(); return newRef.set({ id: newRef.key, name: data.name, amount: Number(data.amount), msg: data.msg || "", messageSource: data.messageSource || "text", voiceUrl: data.voiceUrl || "", voiceMimeType: data.voiceMimeType || "", voiceDuration: Number(data.voiceDuration || 0), voiceStatus: data.voiceStatus || "none", voiceEnabled: data.voiceEnabled === true, status: data.status || "Awaiting Verification", timeSubmitted: data.timeSubmitted || new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), timestamp: firebase.database.ServerValue.TIMESTAMP }).then(() => newRef.key); },
   approveSupport: function(key, data) { const approvedRef = db.ref("approvedSupport").push(); const updateData = { id: approvedRef.key, name: data.name, amount: Number(data.amount), msg: data.msg || "", messageSource: data.messageSource || "text", voiceUrl: data.voiceUrl || "", voiceMimeType: data.voiceMimeType || "", voiceDuration: Number(data.voiceDuration || 0), voiceStatus: data.voiceUrl ? "approved" : (data.voiceStatus || "none"), voiceEnabled: data.voiceEnabled === true, status: "Approved", approvedAt: firebase.database.ServerValue.TIMESTAMP, pinned: false }; return approvedRef.set(updateData).then(() => db.ref("pendingSupport/" + key).remove().then(() => approvedRef.key)); },
