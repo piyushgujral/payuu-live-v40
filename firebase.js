@@ -18,6 +18,7 @@ if (!firebase.apps.length) {
 }
 const db = firebase.database();
 const auth = firebase.auth();
+const storage = firebase.storage();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
 
 // Reusable Helper SDK Methods
@@ -134,18 +135,33 @@ window.firebaseDB = {
   },
 
   // --- DATA HELPERS ---
-  addPendingSupport: function(data) {
+ addPendingSupport: function(data) {
     const newRef = db.ref("pendingSupport").push();
+
     return newRef.set({
-      id: newRef.key,
-      name: data.name,
-      amount: Number(data.amount),
-      msg: data.msg || "",
-      status: data.status || "Awaiting Verification",
-      timeSubmitted: data.timeSubmitted || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      timestamp: firebase.database.ServerValue.TIMESTAMP
+        id: newRef.key,
+        name: data.name,
+        amount: Number(data.amount),
+        msg: data.msg || "",
+
+        // ORIGINAL SUPPORTER VOICE
+        messageSource: data.messageSource || "text",
+        voiceUrl: data.voiceUrl || "",
+        voiceMimeType: data.voiceMimeType || "",
+        voiceDuration: Number(data.voiceDuration || 0),
+        voiceStatus: data.voiceStatus || "none",
+        voiceEnabled: data.voiceEnabled === true,
+
+        status: data.status || "Awaiting Verification",
+
+        timeSubmitted: data.timeSubmitted || new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+        }),
+
+        timestamp: firebase.database.ServerValue.TIMESTAMP
     }).then(() => newRef.key);
-  },
+},
 
   approveSupport: function(key, data) {
     const approvedRef = db.ref("approvedSupport").push();
