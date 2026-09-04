@@ -254,11 +254,7 @@ window.speakAlertVoice = function(item, onComplete) {
   setTimeout(() => {
     audio.play().catch(finish);
   }, 700);
-};        const durationSec=Number(item.voiceDuration||0); const configured=Number(siteSettings?.overlay?.duration||6); const needed=Math.max(configured,durationSec+1,12);
-        try{if(siteSettings?.overlay)siteSettings.overlay.duration=needed;}catch(_){}
-        audio.pause();audio.currentTime=0;audio.src=url;audio.volume=siteSettings?.overlay?.volume!==undefined?Number(siteSettings.overlay.volume):0.9;audio.onended=done;audio.onerror=done;
-        setTimeout(()=>audio.play().catch(done),700);
-      };
-    },0);
+      }, 0);
+    });
   });
 })();
