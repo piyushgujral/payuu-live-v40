@@ -251,7 +251,7 @@ window.speakAlertVoice = function(item, onComplete) {
   audio.onended = finish;
   audio.onerror = finish;
 
-  setTimeout(() => {
+    setTimeout(() => {
     audio.play().catch(finish);
   }, 700);
       }, 0);
