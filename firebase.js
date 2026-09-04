@@ -22,13 +22,7 @@ window.firebaseDB = {
   signInWithGoogle: function() { return auth.signInWithPopup(googleProvider); },
   signOut: function() { return auth.signOut(); },
   onAuthStateChanged: function(callback) { auth.onAuthStateChanged(callback); },
-  checkAdminStatus: function(userEmail, callback) {
-    db.ref("admins").once("value", (snapshot) => {
-      const admins = snapshot.val() || {}; let matchedAdmin = null;
-      Object.keys(admins).forEach(uid => { if (admins[uid].email && admins[uid].email.toLowerCase() === userEmail.toLowerCase()) matchedAdmin = { uid, ...admins[uid] }; });
-      callback(matchedAdmin);
-    });
-  },
+  checkAdminStatus: function(userEmail, callback) { db.ref("admins").once("value", (snapshot) => { const admins = snapshot.val() || {}; let matchedAdmin = null; Object.keys(admins).forEach(uid => { if (admins[uid].email && admins[uid].email.toLowerCase() === userEmail.toLowerCase()) matchedAdmin = { uid, ...admins[uid] }; }); callback(matchedAdmin); }); },
   listenAdmins: function(callback) { db.ref("admins").on("value", (snapshot) => { const data = snapshot.val(); callback(data ? Object.keys(data).map(key => ({ ...data[key], _key: key })) : []); }); },
   getActiveAdminEmails: function(callback) { db.ref("admins").once("value", (snapshot) => { const data = snapshot.val() || {}; const activeEmails = []; Object.keys(data).forEach(key => { if (data[key].active === true && data[key].email) activeEmails.push(data[key].email); }); callback(activeEmails); }); },
   saveAdmin: function(adminData) { const sanitizeEmailKey = adminData.email.replace(/[@.]/g, "_"); return db.ref("admins/" + sanitizeEmailKey).set({ email: adminData.email.toLowerCase(), role: adminData.role || "moderator", active: adminData.active !== undefined ? adminData.active : true, updatedAt: firebase.database.ServerValue.TIMESTAMP }); },
@@ -67,3 +61,160 @@ window.firebaseDB = {
   resetSettings: function(defaultSettings) { return db.ref("settings").set(defaultSettings); },
   resetStatistics: function() { return Promise.all([db.ref("approvedSupport").remove(), db.ref("overlayQueue").remove()]); }
 };
+
+/* ====================================================
+   ORIGINAL SUPPORTER VOICE UI BRIDGE
+   Keeps the existing master script/features intact.
+   ==================================================== */
+(function installOriginalSupporterVoiceBridge() {
+  let voiceBlob = null;
+  let voiceMimeType = '';
+  let voiceDuration = 0;
+  let voiceRecorder = null;
+  let voiceChunks = [];
+  let voiceStartedAt = 0;
+  let voiceStopTimer = null;
+  let voicePreviewUrl = '';
+
+  function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
+  function show(id, yes) { const el = document.getElementById(id); if (el) el.style.display = yes ? 'inline-block' : 'none'; }
+  function resetVoice() {
+    if (voiceStopTimer) clearTimeout(voiceStopTimer);
+    if (voiceRecorder && voiceRecorder.state === 'recording') voiceRecorder.stop();
+    voiceRecorder = null; voiceBlob = null; voiceMimeType = ''; voiceDuration = 0; voiceChunks = [];
+    if (voicePreviewUrl) { URL.revokeObjectURL(voicePreviewUrl); voicePreviewUrl = ''; }
+    const preview = document.getElementById('voice-preview');
+    if (preview) { preview.pause(); preview.removeAttribute('src'); preview.load(); preview.style.display = 'none'; }
+    show('voice-stop-btn', false); show('voice-play-btn', false); show('voice-rerecord-btn', false); show('voice-delete-btn', false);
+    const panel = document.getElementById('voice-recorder-panel'); if (panel) panel.style.display = 'none';
+    setText('voice-upload-status', '');
+    const time = document.getElementById('voice-recording-time'); if (time) time.textContent = '00:00';
+    const recBtn = document.getElementById('voice-record-btn'); if (recBtn) recBtn.disabled = false;
+  }
+  function startVoice() {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { alert('Voice recording is not supported in this browser.'); return; }
+    navigator.mediaDevices.getUserMedia({audio:true}).then(stream => {
+      voiceChunks = [];
+      const choices = ['audio/webm;codecs=opus','audio/webm','audio/mp4'];
+      const mime = choices.find(t => MediaRecorder.isTypeSupported(t)) || '';
+      voiceRecorder = new MediaRecorder(stream, mime ? {mimeType:mime} : undefined);
+      voiceMimeType = voiceRecorder.mimeType || mime || 'audio/webm';
+      voiceStartedAt = Date.now();
+      const panel = document.getElementById('voice-recorder-panel'); if (panel) panel.style.display = 'block';
+      const recBtn = document.getElementById('voice-record-btn'); if (recBtn) recBtn.disabled = true;
+      show('voice-stop-btn', true); show('voice-play-btn', false); show('voice-rerecord-btn', false); show('voice-delete-btn', false);
+      setText('voice-recording-status', '🔴 Recording… maximum 30 seconds.');
+      const timerEl = document.getElementById('voice-recording-time');
+      voiceRecorder.ondataavailable = e => { if (e.data?.size) voiceChunks.push(e.data); };
+      voiceRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (voiceStopTimer) clearTimeout(voiceStopTimer);
+        voiceDuration = Math.min(30, Math.max(1, Math.round((Date.now()-voiceStartedAt)/1000)));
+        voiceBlob = new Blob(voiceChunks, {type:voiceMimeType});
+        voicePreviewUrl = URL.createObjectURL(voiceBlob);
+        const preview = document.getElementById('voice-preview');
+        if (preview) { preview.src = voicePreviewUrl; preview.style.display = 'block'; }
+        show('voice-stop-btn', false); show('voice-play-btn', true); show('voice-rerecord-btn', true); show('voice-delete-btn', true);
+        if (recBtn) recBtn.disabled = false;
+        setText('voice-recording-status', `Original voice recorded (${voiceDuration}s).`);
+        if (timerEl) timerEl.textContent = `00:${String(voiceDuration).padStart(2,'0')}`;
+      };
+      voiceRecorder.start(250);
+      voiceStopTimer = setTimeout(() => { if (voiceRecorder?.state === 'recording') voiceRecorder.stop(); }, 30000);
+    }).catch(err => { console.error('Microphone error:', err); alert('Microphone permission is required to record your voice.'); });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const recordBtn = document.getElementById('voice-record-btn');
+    const stopBtn = document.getElementById('voice-stop-btn');
+    const playBtn = document.getElementById('voice-play-btn');
+    const rerecordBtn = document.getElementById('voice-rerecord-btn');
+    const deleteBtn = document.getElementById('voice-delete-btn');
+    if (recordBtn) recordBtn.addEventListener('click', startVoice);
+    if (stopBtn) stopBtn.addEventListener('click', () => { if (voiceRecorder?.state === 'recording') voiceRecorder.stop(); });
+    if (playBtn) playBtn.addEventListener('click', () => document.getElementById('voice-preview')?.play());
+    if (rerecordBtn) rerecordBtn.addEventListener('click', () => { resetVoice(); startVoice(); });
+    if (deleteBtn) deleteBtn.addEventListener('click', resetVoice);
+  });
+
+  // Capture the form only when a voice recording exists. Typed-only submissions keep the existing master flow.
+  document.addEventListener('submit', e => {
+    if (e.target?.id !== 'tip-form' || !voiceBlob) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const name = document.getElementById('supporter-name')?.value.trim() || '';
+    const custom = parseFloat(document.getElementById('custom-amount')?.value);
+    const activeCard = document.querySelector('.donation-card.active');
+    const amount = custom > 0 ? custom : Number(activeCard?.dataset.value || 50);
+    const minAmt = Number(window.__payuuVoiceSettings?.minAmount || 40);
+    if (!name || !amount || amount < minAmt) { alert(`Please enter a valid name and amount (Minimum ₹${minAmt}).`); return; }
+    try { if (window.AudioContext || window.webkitAudioContext) { const C=window.AudioContext||window.webkitAudioContext; const c=new C(); const o=c.createOscillator(); const g=c.createGain(); o.frequency.value=988; g.gain.value=.12; o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+.12); } } catch(_) {}
+    let settings = window.__payuuVoiceSettings || {};
+    const timeSubmitted = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    try { STATE.activeSubmission = { name, amount:Number(amount), msg:document.getElementById('supporter-message')?.value.trim() || '', messageSource:'voice', voiceEnabled:true, voiceBlob, voiceMimeType, voiceDuration, timeSubmitted, status:STATUS.AWAITING_VERIFICATION }; } catch(err) { console.error('Voice submission state error:',err); return; }
+    const note = `${name}: ${STATE.activeSubmission.msg}`.substring(0,50);
+    const upiId = settings.upiId || document.getElementById('upi-id-text')?.textContent || '';
+    const payee = settings.streamerName || 'Payuu Live';
+    const upiUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(payee)}&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+    try { window.location.href = upiUrl; } catch(_) {}
+    setTimeout(() => { const modal=document.getElementById('confirm-payment-modal'); if (modal) modal.classList.add('active'); }, 600);
+  }, true);
+
+  document.addEventListener('click', async e => {
+    if (e.target?.id !== 'btn-paid-yes' || !voiceBlob) return;
+    if (!STATE.activeSubmission || !STATE.activeSubmission.voiceBlob) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    try {
+      setText('voice-upload-status','Uploading original voice…');
+      const mime = STATE.activeSubmission.voiceMimeType || voiceBlob.type || 'audio/webm';
+      const ext = mime.includes('mp4') ? 'm4a' : 'webm';
+      const fileName = `supporter-${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+      const voiceUrl = await window.firebaseDB.uploadVoiceRecording(voiceBlob,fileName,mime);
+      STATE.activeSubmission.voiceUrl = voiceUrl;
+      STATE.activeSubmission.voiceStatus = 'pending';
+      delete STATE.activeSubmission.voiceBlob;
+      await window.firebaseDB.addPendingSupport(STATE.activeSubmission);
+      if (typeof sendAdminEmailNotification === 'function') sendAdminEmailNotification(STATE.activeSubmission);
+      const modal=document.getElementById('confirm-payment-modal'); if (modal) modal.classList.remove('active');
+      const nameInput=document.getElementById('supporter-name'); const msgInput=document.getElementById('supporter-message');
+      if (nameInput) nameInput.value=''; if (msgInput) msgInput.value=''; setText('char-count','0'); resetVoice();
+      const thank=document.getElementById('thankyou-modal'); if (thank) thank.classList.add('active');
+      STATE.activeSubmission=null;
+    } catch(err) {
+      console.error('Voice upload/submission failed:',err);
+      alert('Unable to submit your voice message. Please try again.');
+    }
+  }, true);
+
+  if (document.getElementById('voice-record-btn')) window.__payuuVoiceMode = true;
+
+  // Settings are shared with the overlay bridge and voice form.
+  window.__payuuVoiceSettings = window.__payuuVoiceSettings || {};
+  db.ref('settings').on('value', snap => { window.__payuuVoiceSettings = snap.val() || {}; });
+
+  // Overlay: replace supporter TTS with the actual uploaded audio, without touching admin test TTS.
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!document.getElementById('alert-card')) return;
+    const audio = document.createElement('audio');
+    audio.id = 'supporter-voice-player'; audio.preload = 'auto'; audio.style.display = 'none';
+    document.body.appendChild(audio);
+    window.__payuuOriginalVoiceAudio = audio;
+    setTimeout(() => {
+      if (typeof window.speakAlertVoice !== 'function') return;
+      window.speakAlertVoice = function(item, onComplete) {
+        const done = typeof onComplete === 'function' ? onComplete : () => {};
+        const url = item?.voiceUrl ? String(item.voiceUrl) : '';
+        if (!url || item.voiceEnabled !== true || item.voiceStatus === 'rejected') { done(); return; }
+        const durationSec = Number(item.voiceDuration || 0);
+        const configured = Number(window.__payuuVoiceSettings?.overlay?.duration || 6);
+        const needed = Math.max(configured, durationSec + 1, 12);
+        if (window.siteSettings?.overlay) window.siteSettings.overlay.duration = needed / 1000;
+        audio.pause(); audio.currentTime=0; audio.src=url;
+        audio.volume = window.__payuuVoiceSettings?.overlay?.volume !== undefined ? Number(window.__payuuVoiceSettings.overlay.volume) : 0.9;
+        audio.onended = done; audio.onerror = done;
+        setTimeout(() => audio.play().catch(done), 700);
+      };
+    }, 0);
+  });
+})();
