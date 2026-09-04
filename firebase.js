@@ -202,11 +202,59 @@ window.firebaseDB = {
     if(!document.getElementById('alert-card'))return;
     const audio=document.createElement('audio');audio.id='supporter-voice-player';audio.preload='auto';audio.style.display='none';document.body.appendChild(audio);window.__payuuOriginalVoiceAudio=audio;
     setTimeout(()=>{
-      if(typeof window.speakAlertVoice!=='function')return;
-      window.speakAlertVoice=function(item,onComplete){
-        const done=typeof onComplete==='function'?onComplete:()=>{}; const url=item?.voiceUrl?String(item.voiceUrl):'';
-        if(!url||item.voiceEnabled!==true||item.voiceStatus==='rejected'){done();return;}
-        const durationSec=Number(item.voiceDuration||0); const configured=Number(siteSettings?.overlay?.duration||6); const needed=Math.max(configured,durationSec+1,12);
+      const originalSpeakAlertVoice = window.speakAlertVoice;
+
+window.speakAlertVoice = function(item, onComplete) {
+  const done = typeof onComplete === 'function' ? onComplete : () => {};
+  const url = item?.voiceUrl ? String(item.voiceUrl) : '';
+
+  // No original recording: use the normal TTS engine.
+  if (!url || item.voiceEnabled !== true || item.voiceStatus === 'rejected') {
+    if (typeof originalSpeakAlertVoice === 'function') {
+      originalSpeakAlertVoice(item, done);
+    } else {
+      done();
+    }
+    return;
+  }
+
+  // Original supporter recording: play the actual audio.
+  const durationSec = Number(item.voiceDuration || 0);
+  const configured = Number(siteSettings?.overlay?.duration || 6);
+  const needed = Math.max(configured, durationSec + 1, 12);
+
+  try {
+    if (siteSettings?.overlay) {
+      siteSettings.overlay.duration = needed;
+    }
+  } catch (_) {}
+
+  audio.pause();
+  audio.currentTime = 0;
+  audio.src = url;
+
+  audio.volume =
+    siteSettings?.overlay?.volume !== undefined
+      ? Number(siteSettings.overlay.volume)
+      : 0.9;
+
+  let finished = false;
+
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    audio.onended = null;
+    audio.onerror = null;
+    done();
+  };
+
+  audio.onended = finish;
+  audio.onerror = finish;
+
+  setTimeout(() => {
+    audio.play().catch(finish);
+  }, 700);
+};        const durationSec=Number(item.voiceDuration||0); const configured=Number(siteSettings?.overlay?.duration||6); const needed=Math.max(configured,durationSec+1,12);
         try{if(siteSettings?.overlay)siteSettings.overlay.duration=needed;}catch(_){}
         audio.pause();audio.currentTime=0;audio.src=url;audio.volume=siteSettings?.overlay?.volume!==undefined?Number(siteSettings.overlay.volume):0.9;audio.onended=done;audio.onerror=done;
         setTimeout(()=>audio.play().catch(done),700);
