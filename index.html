@@ -211,15 +211,89 @@
                             </div>
                         </div>
 
-                        <div class="input-field-group">
-                            <label class="floating-label" for="supporter-message">Message for Streamer</label>
-                            <div class="input-with-icon">
-                                <i class="fa-solid fa-comment-dots input-prefix-icon"></i>
-                                <textarea id="supporter-message" class="form-input text-area" maxlength="150" placeholder="Write a message to read on stream..."></textarea>
-                            </div>
-                            <div class="char-counter"><span id="char-count">0</span> / 150</div>
-                        </div>
+                       <div class="input-field-group">
+    <label class="floating-label" for="supporter-message">
+        Message for Streamer
+    </label>
 
+    <div class="input-with-icon">
+        <i class="fa-solid fa-comment-dots input-prefix-icon"></i>
+        <textarea
+            id="supporter-message"
+            class="form-input text-area"
+            maxlength="150"
+            placeholder="Write a message to read on stream..."
+        ></textarea>
+    </div>
+
+    <div class="char-counter">
+        <span id="char-count">0</span> / 150
+    </div>
+
+    <!-- ORIGINAL VOICE MESSAGE -->
+    <div class="voice-option">
+        <button
+            type="button"
+            id="voice-record-btn"
+            class="voice-record-btn"
+        >
+            🎙️ SPEAK MESSAGE
+        </button>
+
+        <div id="voice-recorder-panel" style="display:none; margin-top:12px;">
+
+            <div id="voice-recording-status">
+                <span id="voice-recording-dot">🔴</span>
+                <span id="voice-recording-time">00:00</span>
+            </div>
+
+            <div class="voice-actions">
+                <button
+                    type="button"
+                    id="voice-stop-btn"
+                    style="display:none;"
+                >
+                    ⏹ Stop
+                </button>
+
+                <button
+                    type="button"
+                    id="voice-play-btn"
+                    style="display:none;"
+                >
+                    ▶ Play
+                </button>
+
+                <button
+                    type="button"
+                    id="voice-rerecord-btn"
+                    style="display:none;"
+                >
+                    🔄 Re-record
+                </button>
+
+                <button
+                    type="button"
+                    id="voice-delete-btn"
+                    style="display:none;"
+                >
+                    🗑 Delete
+                </button>
+            </div>
+
+            <audio
+                id="voice-preview"
+                controls
+                style="display:none; width:100%; margin-top:10px;"
+            ></audio>
+
+            <div
+                id="voice-upload-status"
+                style="font-size:0.75rem; margin-top:8px;"
+            ></div>
+        </div>
+    </div>
+</div>
                         <button type="submit" class="btn-support-mega" id="support-submit-btn">
                             ⚡ <span id="dyn-btn-text">SUPPORT NOW</span> ⚡
                         </button>
@@ -942,10 +1016,11 @@
 
     <!-- Firebase SDK Libraries -->
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-storage-compat.js"></script>
 
-    <script src="firebase.js"></script>
+<script src="firebase.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
