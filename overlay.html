@@ -290,56 +290,129 @@
             } catch (err) {}
         }
 
-        // AI VOICE TTS ENGINE
-        function speakAlertVoice(item, onComplete) {
-            if (!('speechSynthesis' in window) || (siteSettings.voice && siteSettings.voice.enabled === false)) {
-                if (onComplete) onComplete();
-                return;
-            }
+// VOICE / TTS ENGINE
+function speakAlertVoice(item, onComplete) {
+    const done = typeof onComplete === "function" ? onComplete : () => {};
 
-            window.speechSynthesis.cancel(); // Clear any hanging speech
+    // Recorded supporter voice is handled separately.
+    if (item?.voiceUrl && item.voiceEnabled === true && item.voiceStatus !== "rejected") {
+        done();
+        return;
+    }
 
-            const name = item.name || "A Supporter";
-            const amount = item.amount || 0;
-            const message = item.msg ? item.msg.trim() : "";
+    const message = item?.msg ? String(item.msg).trim() : "";
 
-            let speechText = "";
-            const lang = siteSettings.voice?.language || "en-IN";
+    // Nothing to speak.
+    if (!message) {
+        done();
+        return;
+    }
 
-            if (lang.startsWith("hi")) {
-                speechText = `${name} ने ${amount} रुपये का सपोर्ट किया। `;
-                if (message) speechText += `संदेश: ${message}`;
-            } else {
-                speechText = `New Support! ${name} supported ${amount} rupees. `;
-                if (message) speechText += `Message: ${message}`;
-            }
+    if (!("speechSynthesis" in window)) {
+        done();
+        return;
+    }
+
+    if (siteSettings.voice && siteSettings.voice.enabled === false) {
+        done();
+        return;
+    }
+
+    const name = item.name || "A Supporter";
+    const amount = item.amount || 0;
+    const lang = siteSettings.voice?.language || "en-IN";
+
+    let speechText = "";
+
+    if (lang.toLowerCase().startsWith("hi")) {
+        speechText = `${name} ने ${amount} रुपये का सपोर्ट किया। संदेश: ${message}`;
+    } else {
+        speechText = `New Support! ${name} supported ${amount} rupees. Message: ${message}`;
+    }
+
+    const speak = () => {
+        try {
+            window.speechSynthesis.cancel();
 
             const utterance = new SpeechSynthesisUtterance(speechText);
-            utterance.lang = lang;
-            utterance.volume = siteSettings.voice?.volume !== undefined ? siteSettings.voice.volume : 0.9;
-            utterance.rate = siteSettings.voice?.rate || 1.0;
 
-            // Pitch adjustment based on gender preference
-            if (siteSettings.voice?.gender === "male") {
-                utterance.pitch = siteSettings.voice?.pitch || 0.8;
-            } else {
-                utterance.pitch = siteSettings.voice?.pitch || 1.2;
+            utterance.lang = lang;
+            utterance.volume =
+                siteSettings.voice?.volume !== undefined
+                    ? Number(siteSettings.voice.volume)
+                    : 0.9;
+
+            utterance.rate =
+                siteSettings.voice?.rate !== undefined
+                    ? Number(siteSettings.voice.rate)
+                    : 1.0;
+
+            utterance.pitch =
+                siteSettings.voice?.gender === "male"
+                    ? Number(siteSettings.voice?.pitch || 0.8)
+                    : Number(siteSettings.voice?.pitch || 1.2);
+
+            const voices = window.speechSynthesis.getVoices();
+
+            const languageBase = lang.split("-")[0].toLowerCase();
+
+            const matchedVoice =
+                voices.find(v => v.lang.toLowerCase() === lang.toLowerCase()) ||
+                voices.find(v => v.lang.toLowerCase().startsWith(languageBase));
+
+            if (matchedVoice) {
+                utterance.voice = matchedVoice;
             }
 
-            // Select Voice Engine Match
-            const voices = window.speechSynthesis.getVoices();
-            const matchedVoice = voices.find(v => v.lang === lang || v.lang.replace('_', '-').startsWith(lang.split('-')[0]));
-            if (matchedVoice) utterance.voice = matchedVoice;
+            let completed = false;
 
-            utterance.onend = () => { if (onComplete) onComplete(); };
-            utterance.onerror = () => { if (onComplete) onComplete(); };
+            const finish = () => {
+                if (completed) return;
+                completed = true;
+                done();
+            };
 
-            // Small delay after chime before speaking
+            utterance.onend = finish;
+            utterance.onerror = finish;
+
+            window.speechSynthesis.speak(utterance);
+
+            // Safety fallback in case Chrome fails to fire onend.
             setTimeout(() => {
-                window.speechSynthesis.speak(utterance);
-            }, 700);
-        }
+                if (window.speechSynthesis.speaking === false) {
+                    finish();
+                }
+            }, Math.max(10000, speechText.length * 120));
 
+        } catch (error) {
+            console.error("TTS error:", error);
+            done();
+        }
+    };
+
+    // Chrome may not have loaded voices when the page first opens.
+    const voices = window.speechSynthesis.getVoices();
+
+    if (voices.length > 0) {
+        setTimeout(speak, 700);
+    } else {
+        const oldHandler = window.speechSynthesis.onvoiceschanged;
+
+        window.speechSynthesis.onvoiceschanged = () => {
+            if (oldHandler) oldHandler();
+
+            window.speechSynthesis.onvoiceschanged = oldHandler;
+            setTimeout(speak, 300);
+        };
+
+        // Fallback if Chrome doesn't fire voiceschanged.
+        setTimeout(() => {
+            if (!window.speechSynthesis.speaking) {
+                speak();
+            }
+        }, 1500);
+    }
+}
         function processNextAlert() {
             if (isDisplayingAlert || overlayQueue.length === 0) return;
 
