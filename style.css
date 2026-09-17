@@ -1312,3 +1312,57 @@ body {
 .details-body strong {
     color: var(--gold-primary);
 }
+
+
+/* PAYUU LIVE SUPPORTER FEED VISIBILITY FIX */
+.supporters-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 280px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 2px 0;
+}
+
+.feed-card {
+    width: 100%;
+    min-height: 42px;
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
+.feed-card-header {
+    min-height: 42px;
+    height: auto;
+    padding: 8px 12px;
+    gap: 12px;
+    line-height: 1.25;
+    overflow: visible;
+}
+
+.feed-card-user {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    color: #FFFFFF;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    font-weight: 700;
+    line-height: 1.25;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: break-word;
+}
+
+.feed-card-amount {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    line-height: 1.25;
+}
+
+.feed-card-body {
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
