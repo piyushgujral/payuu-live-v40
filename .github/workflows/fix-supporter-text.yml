@@ -1,6 +1,8 @@
 name: Fix Recent Supporters Text
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
